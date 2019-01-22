@@ -1,0 +1,122 @@
+buildscript {
+    repositories {
+        jcenter()
+    }
+    dependencies {
+        // https://github.com/bintray/gradle-bintray-plugin
+        classpath "com.jfrog.bintray.gradle:gradle-bintray-plugin:1.7"
+    }
+}
+
+// apply the plugin with its class name rather than its Id to work around gradle limitation of
+// not being able to find the plugin by Id despite the dependencies being added right above. Gradle
+// is currently not capable of loading plugins by Id if the dependency is anywhere else than
+// in the main project build.gradle. This file is "imported" into the project's build.gradle
+// through a "apply from:".
+apply plugin: com.jfrog.bintray.gradle.BintrayPlugin
+apply plugin: 'maven-publish'
+
+afterEvaluate {
+    javadoc.classpath += files(android.libraryVariants.collect { variant ->
+        variant.javaCompiler.classpath.files
+    })
+}
+
+task sourcesJar(type: Jar) {
+    classifier = 'sources'
+    from android.sourceSets.main.java.srcDirs
+}
+
+task javadoc(type: Javadoc) {
+    source = android.sourceSets.main.java.srcDirs
+    classpath += files(android.bootClasspath.join(File.pathSeparator))
+}
+
+task javadocJar(type: Jar, dependsOn: javadoc) {
+    classifier = 'javadoc'
+    from javadoc.destinationDir
+}
+
+artifacts {
+    archives javadocJar
+    archives sourcesJar
+}
+
+// publish aar
+// ./gradlew bintrayUpload
+publishing {
+    publications {
+        library(MavenPublication) {
+
+            groupId project.groupId
+            artifactId project.artifactId
+            version project.versionName
+
+            // Release AAR
+            artifact "$buildDir/outputs/aar/$project.name-release.aar"
+
+            // Release Sources
+            artifact sourcesJar
+
+            // Release JavaDoc
+            artifact javadocJar
+
+            pom.withXml {
+                def dependenciesNode = asNode().appendNode('dependencies')
+                def addDependency = { Dependency dep, String scope ->
+                    println scope + ' ' + dep.group + ':' + dep.name + ':' + dep.version
+                    if(dep.group == null || 'unspecified'.equals(dep.group)
+                            || dep.name == null || 'unspecified'.equals(dep.name)
+                            || dep.version == null || 'unspecified'.equals(dep.version)) {
+                        return // ignore invalid dependencies
+                    }
+
+                    def dependencyNode = dependenciesNode.appendNode('dependency')
+                    dependencyNode.appendNode('groupId', dep.group)
+                    dependencyNode.appendNode('artifactId', dep.name)
+                    dependencyNode.appendNode('version', dep.version)
+                    dependencyNode.appendNode('scope', scope)
+                    // dependencyNode.appendNode('type', 'aar')
+                }
+                //Iterate over the compile dependencies (we don't want the test ones), adding a <dependency> node for each
+                // List all "compile" dependencies (for old Gradle)
+                configurations.compile.getDependencies().each { dep -> addDependency(dep, "compile") }
+                // List all "api" dependencies (for new Gradle) as "compile" dependencies
+                configurations.api.getDependencies().each { dep -> addDependency(dep, "compile") }
+                // List all "implementation" dependencies (for new Gradle) as "runtime" dependencies
+                configurations.implementation.getDependencies().each { dep -> addDependency(dep, "runtime") }
+            }
+
+        }
+    }
+}
+
+// upload to bintray
+// https://jcenter.bintray.com/
+bintray {
+    Properties properties = new Properties()
+    properties.load(project.rootProject.file('local.properties').newDataInputStream())
+    user = properties.getProperty("bintray.user")
+    key = properties.getProperty("bintray.apikey")
+
+    publications = [ 'library' ]
+
+    pkg {
+        repo = 'maven'
+        group = project.groupId // project group
+        name = project.groupId + ':' + project.artifactId // project name
+        desc = project.describe // project describe
+        licenses = project.licenses // License selected when creating warehouse
+        websiteUrl = project.websiteUrl // project website
+        vcsUrl = project.vcsUrl // project address
+        labels = project.labels // project labels
+        publicDownloadNumbers = true
+
+        version {
+            name = project.versionName // version
+            desc = project.describe + ' version ' + project.versionName // this version describe
+            vcsTag = project.versionName // git tag
+            released = new Date() // release date
+        }
+    }
+}
