@@ -64,19 +64,26 @@ publishing {
             pom.withXml {
                 def dependenciesNode = asNode().appendNode('dependencies')
                 def addDependency = { Dependency dep, String scope ->
-                    println scope + ' ' + dep.group + ':' + dep.name + ':' + dep.version
                     if(dep.group == null || 'unspecified'.equals(dep.group)
                             || dep.name == null || 'unspecified'.equals(dep.name)
                             || dep.version == null || 'unspecified'.equals(dep.version)) {
                         return // ignore invalid dependencies
                     }
-
+                    def dependencyUrl = scope + ' ' + dep.group + ':' + dep.name + ':' + dep.version
                     def dependencyNode = dependenciesNode.appendNode('dependency')
                     dependencyNode.appendNode('groupId', dep.group)
                     dependencyNode.appendNode('artifactId', dep.name)
                     dependencyNode.appendNode('version', dep.version)
                     dependencyNode.appendNode('scope', scope)
-                    // dependencyNode.appendNode('type', 'aar')
+                    if(dep instanceof ModuleDependency) {
+                        dep = (ModuleDependency) dep
+                        dep.artifacts.each { artifact ->
+                            dependencyNode.appendNode('type', artifact.type)
+                            dependencyNode.appendNode('classifier', artifact.classifier)
+                            dependencyUrl += '@' + artifact.type
+                        }
+                    }
+                    println dependencyUrl
                 }
                 //Iterate over the compile dependencies (we don't want the test ones), adding a <dependency> node for each
                 // List all "compile" dependencies (for old Gradle)
