@@ -16,12 +16,6 @@ buildscript {
 apply plugin: com.jfrog.bintray.gradle.BintrayPlugin
 apply plugin: 'maven-publish'
 
-afterEvaluate {
-    javadoc.classpath += files(android.libraryVariants.collect { variant ->
-        variant.javaCompiler.classpath.files
-    })
-}
-
 task sourcesJar(type: Jar) {
     classifier = 'sources'
     from android.sourceSets.main.java.srcDirs
@@ -30,6 +24,10 @@ task sourcesJar(type: Jar) {
 task javadoc(type: Javadoc) {
     source = android.sourceSets.main.java.srcDirs
     classpath += files(android.bootClasspath.join(File.pathSeparator))
+
+    javadoc.classpath += files(android.libraryVariants.collect { variant ->
+        variant.javaCompiler.classpath.files
+    })
 }
 
 task javadocJar(type: Jar, dependsOn: javadoc) {
@@ -115,15 +113,25 @@ bintray {
         desc = project.describe // project describe
         licenses = project.licenses // License selected when creating warehouse
         websiteUrl = project.websiteUrl // project website
+        issueTrackerUrl = project.issueUrl // project issue
         vcsUrl = project.vcsUrl // project address
         labels = project.labels // project labels
         publicDownloadNumbers = true
 
         version {
             name = project.versionName // version
-            desc = project.describe + ' version ' + project.versionName // this version describe
+            desc = project.versionDescribe // this version describe
             vcsTag = project.versionName // git tag
             released = new Date() // release date
         }
     }
 }
+
+// 解决新版本gradle不会自动打包
+afterEvaluate {
+    bintrayUpload.dependsOn assembleRelease
+    bintrayUpload.dependsOn javadocJar
+    bintrayUpload.dependsOn sourcesJar
+    bintrayUpload.dependsOn 'generatePomFileForLibraryPublication'
+}
+
